@@ -7,6 +7,9 @@ TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
 cp "$SRC/main.py" "$TMP/main.py"
 cp "$SRC/deck.csv" "$TMP/deck.csv"
 [ -n "${CG_LIB_PATH:-}" ] && cp -r "$CG_LIB_PATH" "$TMP/cg"
-( cd "$TMP" && tar -czf "$SRC/submission.tar.gz" . )
+( cd "$TMP" && tar -czf "$SRC/submission.tar.gz" \
+    --exclude='__pycache__' --exclude='*.pyc' \
+    --exclude='.git' --exclude='*.bak' \
+    --exclude='.opp_cache_*.csv' . )
 echo "Done: $SRC/submission.tar.gz"
 tar -tzf "$SRC/submission.tar.gz" | grep -E "main|deck"

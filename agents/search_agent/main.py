@@ -4,8 +4,14 @@ import os
 import sys
 from collections import defaultdict
 
-# Self-contained: add agent directory to sys.path so subprocess execution works
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# Self-contained: add agent directory to sys.path so subprocess execution works.
+# Guard __file__: Kaggle's runner execs this file into an empty namespace where
+# __file__ is undefined, so fall back to cwd in that case.
+try:
+    _HERE = os.path.dirname(os.path.abspath(__file__))
+except NameError:
+    _HERE = os.getcwd()
+sys.path.insert(0, _HERE)
 
 from cg.api import (
     AreaType, Card, CardType, EnergyType, Observation, OptionType, Pokemon,
@@ -457,7 +463,10 @@ def _load_consensus_cache():
     """Load consensus decks from cached .opp_cache files."""
     if _CONSENSUS_CACHE:
         return
-    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    try:
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    except NameError:
+        root = os.getcwd()
     cache_dir = os.path.join(root, 'tools')
     for arch in ALL_ARCHETYPES:
         cache_path = os.path.join(cache_dir, f'.opp_cache_{arch}.csv')
