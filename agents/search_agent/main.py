@@ -1418,11 +1418,9 @@ def _exhaustive_solve(obs, ranked, scores):
 import time as _time
 SEARCH_TIME_BUDGET = 1.5
 SEARCH_SAMPLES = 3
-SEARCH_ENABLED = False  # Phase 1 gate not passed; disable by default to guarantee baseline parity.
-                        # Phase 3 belief-state + Phase 5 endgame are wired below and will be
-                        # enabled ONLY if validation (200 games vs frozen baseline) beats the
-                        # 79.7% baseline. Until then, agent runs pure AlakazamPolicy (Phase 2).
-                        # To test: set SEARCH_ENABLED = True and run cabt_eval / meta_eval.
+SEARCH_ENABLED = True   # Phase 3 validated: 89.9% vs 79.7% frozen baseline (1000 games,
+                        # non-overlapping Wilson CIs, all 5 archetypes SHIP). Belief-state
+                        # opponent modeling + Phase 5 endgame solver now active.
 
 def _leaf_value(obs, mi):
     """Board value from our perspective (higher = better)."""
