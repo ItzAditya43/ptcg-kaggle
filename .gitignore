@@ -26,13 +26,29 @@ venv/
 env/
 ENV/
 
+# Cache / backup files
+*.bak
+*.bak-*
+deck.csv.bak*
+.opp_cache_*.csv
+/tmp/nightly_recalibrate/
+
 # Large official materials (downloaded from Kaggle)
 docs/official/
+
+# CLI help output directory (not source code)
+--help/
 
 # Compiled engine libraries (binary files only - Python files in cg/ are tracked)
 agents/*/cg/*.so
 agents/*/cg/*.dll
 agents/*/cg/*.dylib
+baseline/cg/*.so
+baseline/cg/*.dll
+baseline/cg/*.dylib
+--help/cg/*.so
+--help/cg/*.dll
+--help/cg/*.dylib
 docs/official/models/cg-lib/cg/*.so
 docs/official/models/cg-lib/cg/*.dll
 docs/official/models/cg-lib/cg/*.dylib

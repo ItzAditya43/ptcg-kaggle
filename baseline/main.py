@@ -4,8 +4,7 @@ import os
 import sys
 from collections import defaultdict
 
-# Self-contained: add the bundled cg/ directory to sys.path so subprocess execution works
-# without relying on the parent process's PYTHONPATH / sys.path setup.
+# Self-contained: add agent directory to sys.path so subprocess execution works
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from cg.api import (
