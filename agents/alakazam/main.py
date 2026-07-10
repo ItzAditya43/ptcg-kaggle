@@ -143,10 +143,12 @@ for _c in all_card:
 # is handled automatically: it drops the count back below the need, so we just refill.
 ATTACK_COST = {}                 # attackId -> number of energies in its cost
 ATTACK_COST_ENERGIES = {}        # attackId -> list of required EnergyType (0=Colorless, 5=Psychic…)
+ATTACK_DAMAGE = {}               # attackId -> base damage (int)
 SELF_SCALING_ATTACKS = set()     # attacks whose damage grows with energy on the attacker
 for _a in all_attack():
     ATTACK_COST[_a.attackId] = len(_a.energies or [])
     ATTACK_COST_ENERGIES[_a.attackId] = list(_a.energies or [])
+    ATTACK_DAMAGE[_a.attackId] = int(getattr(_a, 'damage', 0) or 0)
     _t = (_a.text or '').lower()
     if 'for each' in _t and 'energy attached to this' in _t:
         SELF_SCALING_ATTACKS.add(_a.attackId)
@@ -574,6 +576,17 @@ class AlakazamPolicy:
             # deck is low, stop filtering ourselves out of a won game (real-ladder bug).
             if self._deck_preserve():
                 return -1
+            # Hand-size-aware dampener (Task 3 — らすはる deck-out fix):
+            # If hand is already large enough to KO the opponent's active (Powerful Hand
+            # = 20×hand), further drawing is wasteful — we should attack, not hoard.
+            # Also, if hand > 10 and we have no attacker in play, we should be deploying
+            # cards (evolving/attaching) rather than drawing more. The threshold of 10
+            # is derived from Ito's non-hoarding games (hand ~8 at deck-out loss).
+            opp = self.opponent.active[0] if self.opponent.active else None
+            if opp is not None and 20 * self.me.handCount >= opp.hp:
+                return -1   # already lethal — stop drawing, attack
+            if self.me.handCount >= 10 and not self._have_attacker():
+                return -1   # hoarding without an attacker — deploy cards instead
             # NB: top pilots activate Run Away Draw ~1/4 as often as we did (MAIN ABILITY 163 vs
             # our 622) — but a blunt hand-cap gave ~0 divergence gain here and risks the documented
             # cabt regression (deck-out guards hurt cabt), so we keep the aggressive-draw identity
@@ -597,6 +610,24 @@ class AlakazamPolicy:
 
     def _score_play_poke(self, card):
         cid = card.id; n = self.field[cid]
+        # Task 2b: vs a CRITICAL bench-spread attacker (Dragapult Phantom Dive = 200 to
+        # bench), do NOT flood the bench with extra Alakazam-line pieces — every one is a
+        # one-shot prize for the opponent. Cap the line at 2 bodies (1 active + 1 spare)
+        # and keep the rest in hand (where they're +20 Powerful Hand, not a free KO).
+        spread = self._bench_spread_threat_level()
+        if spread == 'CRITICAL':
+            line = (self.field[C.ABRA] + self.field[C.KADABRA]
+                    + self.field[C.ALAKAZAM] + self.field[C.ALAKAZAM_PSY])
+            if cid in (C.ABRA, C.KADABRA, C.ALAKAZAM, C.ALAKAZAM_PSY):
+                if line >= 2:
+                    return 200   # hard cap: don't over-bench the line vs spread
+                return 20000 - 250 * n
+            # Non-line bodies: still fine to bench (they're cheap sac fodder), but keep
+            # the engine modest so we don't present 5 free prizes.
+            if cid == C.DUNSPARCE:
+                if self.field[C.DUNSPARCE] + self.field[C.DUDUNSPARCE] >= 1:
+                    return 1200
+                return 18500 - 250 * n
         if cid == C.ABRA:
             # Majkel (7-05, 7275 MAIN decisions): moderate bench — our #1 over-pick was
             # flooding bodies (PLAY:Dunsparce 548x / Abra 152x). 3 line bodies is plenty.
@@ -817,16 +848,165 @@ class AlakazamPolicy:
             return 1500           # pre-fuel the line (energy carries through evolution)
         return -1                 # non-attacker -> don't waste energy, hold it
 
+    # — generalized incoming-lethal detector (Task 2) —
+    def _opp_attack_damage_to(self, opp_poke, our_active):
+        """Max damage `opp_poke` could deal to `our_active` NEXT turn, using its
+        currently-visible energy + known attack base damage + our_active weakness/
+        resistance. Self-scaling attacks get +1 energy of headroom (they can attach
+        next turn). Returns 0 if it can't pay any attack or has no attacks."""
+        if opp_poke is None or our_active is None:
+            return 0
+        c = card_table.get(opp_poke.id)
+        if c is None or not (c.attacks or []):
+            return 0
+        attached = list(opp_poke.energies or [])
+        od = card_table.get(our_active.id)
+        best = 0
+        for aid in c.attacks:
+            cost = ATTACK_COST_ENERGIES.get(aid)
+            if cost is None:
+                continue
+            if not self._can_pay(attached, cost):
+                if aid in SELF_SCALING_ATTACKS and self._can_pay(attached + [0], cost):
+                    pass
+                else:
+                    continue
+            base = ATTACK_DAMAGE.get(aid, 0)
+            if aid in SELF_SCALING_ATTACKS:
+                base = max(base, self._scaling_damage(aid, len(attached) + 1))
+            dmg = base
+            if od is not None:
+                if od.weakness is not None and od.weakness == c.energyType:
+                    dmg *= 2
+                elif od.resistance is not None and od.resistance == c.energyType:
+                    dmg = max(0, dmg - 30)
+            best = max(best, dmg)
+        return best
+
+    def _scaling_damage(self, aid, n_energy):
+        base = ATTACK_DAMAGE.get(aid, 0)
+        return base + 30 * max(0, n_energy - 1)
+
+    def _opp_incoming_damage(self):
+        active = self.me.active[0] if self.me.active else None
+        if active is None:
+            return 0
+        best = 0
+        for p in (self.opponent.active + self.opponent.bench):
+            if p is None:
+                continue
+            best = max(best, self._opp_attack_damage_to(p, active))
+        return best
+
+    def _incoming_lethal(self):
+        active = self.me.active[0] if self.me.active else None
+        if active is None:
+            return False
+        return self._opp_incoming_damage() >= active.hp
+
+    def _safe_retreat_target(self):
+        active = self.me.active[0] if self.me.active else None
+        incoming = self._opp_incoming_damage() if active is not None else 0
+        best = None; best_score = -1
+        for p in self.me.bench:
+            if p is None:
+                continue
+            survives = (p.hp > incoming) or (incoming == 0)
+            score = 0
+            if p.id in ALAKAZAM_IDS and self._energy_count(p) >= 1:
+                score += 1000
+            elif p.id in ALAKAZAM_IDS:
+                score += 500
+            score += p.hp // 10
+            if survives:
+                score += 200
+            if score > best_score:
+                best_score = score; best = p
+        return best, (best.hp > incoming if best is not None else False)
+
+    # — Task 2b: bench-spread lethal detector —
+    # Dragapult's Phantom Dive (attackId 154) deals 200 to the active AND 200 to a
+    # bench Pokémon. The active-lethal guard above cannot protect bench pieces, so
+    # we add a dedicated spread-threat detector. See kajitake replay (5x ATK 154,
+    # all -200 to bench 743) for the live failure this addresses.
+    def _max_bench_spread_damage(self):
+        """Max bench damage the opponent could deal THIS turn from a payable
+        spread attack (one that hits the bench). Returns 0 if none available."""
+        best = 0
+        for p in (self.opponent.active + self.opponent.bench):
+            if p is None:
+                continue
+            c = card_table.get(p.id)
+            if c is None or not (c.attacks or []):
+                continue
+            attached = list(p.energies or [])
+            for aid in c.attacks:
+                if aid not in BENCH_DAMAGE_ATTACKS:
+                    continue
+                cost = ATTACK_COST_ENERGIES.get(aid)
+                if cost is None:
+                    continue
+                if not self._can_pay(attached, cost):
+                    continue
+                dmg = ATTACK_DAMAGE.get(aid, 0)
+                if dmg > best:
+                    best = dmg
+        return best
+
+    def _bench_spread_threat_level(self):
+        """Classify opponent's bench-spread threat against our fragile attackers.
+        'CRITICAL'  — payable spread attack KOs our Alakazam (>=120 bench dmg)
+        'DANGEROUS' — payable spread attack can KO our small bench (>=70 dmg)
+        'SAFE'      — no payable spread attack present
+        """
+        max_spread = self._max_bench_spread_damage()
+        if max_spread == 0:
+            return 'SAFE'
+        # Our most fragile attacker line is Alakazam 743 (140 HP); lower threshold to 120
+        # because the kajitake replay shows -130 bench damage (below 140 = DANGEROUS,
+        # which doesn't trigger the retreat guard that would have saved us).
+        if max_spread >= 120:
+            return 'CRITICAL'
+        if max_spread >= 70:  # can KO Abra (50) / Dunsparce (70)
+            return 'DANGEROUS'
+        return 'SAFE'
+
+    def _bench_has_alakazam(self):
+        return any(p is not None and p.id in ALAKAZAM_IDS for p in self.me.bench)
+
     # — retreat —
     def _score_retreat(self):
         active = self.me.active[0] if self.me.active else None
         opp = self.opponent.active[0] if self.opponent.active else None
         if active is None or opp is None:
             return -1
+        # Task 2b FIRST: CRITICAL bench-spread (Dragapult Phantom Dive = 200 to active
+        # AND 200 to a bench Pokémon). If our active is NOT an Alakazam but our bench HAS
+        # one, retreat to bring the Alakazam active — as the active it only takes the 200
+        # active hit (NOT the bench-spread hit), so it survives the spread that would
+        # otherwise one-shot it on the bench (kajitake replay: 6x KO on bench 743). If our
+        # active IS already an Alakazam, do NOT retreat — it is already protected from
+        # bench spread as the active, and retreating would expose it. This check runs
+        # BEFORE the generic "bring up a ready Alakazam" branch so the higher-priority
+        # spread-escape score wins.
+        if (self._bench_spread_threat_level() == 'CRITICAL'
+                and active.id not in ALAKAZAM_IDS
+                and self._bench_has_alakazam()):
+            return 25000
         if active.id not in ALAKAZAM_IDS:
             for p in self.me.bench:
                 if p is not None and p.id in ALAKAZAM_IDS and self._energy_count(p) >= 1:
                     return 6000
+        if self._incoming_lethal() and not self._lethal_now():
+            # Task 2b guard: if a CRITICAL bench-spread attacker is in play, retreating
+            # our active Alakazam to the bench just exposes it to the bench-spread hit
+            # (kajitake: 6x KO on bench 743). The active slot is the SAFER place vs spread,
+            # so do NOT retreat an Alakazam into the bench when spread is CRITICAL.
+            if self._bench_spread_threat_level() == 'CRITICAL' and active.id in ALAKAZAM_IDS:
+                return -1
+            tgt, safe = self._safe_retreat_target()
+            if tgt is not None:
+                return 22000 if safe else 12000
         return -1
 
     # — attack —
@@ -1047,6 +1227,22 @@ class AlakazamPolicy:
         return 10
 
 
+def _never_empty(sel, obs_dict):
+    try:
+        if isinstance(sel, list) and len(sel) > 0:
+            return sel
+        minc = 0; n = 0
+        if isinstance(obs_dict, dict):
+            s = obs_dict.get("select") or {}
+            minc = s.get("minCount", 0) or 0
+            n = len(s.get("option") or [])
+        if minc <= 0:
+            return sel if isinstance(sel, list) else []
+        return list(range(min(minc, n)))
+    except Exception:
+        return sel if isinstance(sel, list) else []
+
+
 def agent(obs_dict):
     global pre_turn
     try:
@@ -1066,10 +1262,10 @@ def agent(obs_dict):
         try:
             sel = AlakazamPolicy(obs).choose()
             _DIAG["policy_ok"] += 1
-            return sel
+            return _never_empty(sel, obs_dict)
         except Exception as exc:
             _diag_record_error(exc); _DIAG["policy_fallback"] += 1
-            return _legal_fallback(obs.select)
+            return _never_empty(_legal_fallback(obs.select), obs_dict)
     except Exception as exc:
         _diag_record_error(exc); _DIAG["obs_fallback"] += 1
-        return _legal_fallback_from_dict(obs_dict if isinstance(obs_dict, dict) else {})
+        return _never_empty(_legal_fallback_from_dict(obs_dict if isinstance(obs_dict, dict) else {}), obs_dict)
