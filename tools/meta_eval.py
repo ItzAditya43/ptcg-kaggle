@@ -28,12 +28,19 @@ from collections import Counter
 # Field frequency prior (documented in docs/strategy/牌組策略.md):
 # Crustle ballooned to ~50% of the field; the rest split the remainder.
 # These are DIRECTIONAL — refresh from meta_analyze.py output when available.
+# New archetypes from ladder observation (empirical, not hardcoded meta)
 FIELD_WEIGHTS = {
-    'crustle':    0.50,
-    'lucario':    0.18,
-    'abomasnow':  0.12,
-    'dragapult':  0.12,
-    'iono':       0.08,
+    'crustle':    0.40,   # Reduced to make room for new archetypes
+    'lucario':    0.15,
+    'abomasnow':  0.10,
+    'dragapult':  0.10,
+    'iono':       0.07,
+    'starmie':    0.03,   # Mega Starmie ex
+    'froslass':   0.03,   # Mega Froslass ex
+    'garchomp':   0.03,   # Cynthia's Garchomp ex
+    'cinderace':  0.03,   # Cinderace ex + Duraludon/Archaludon
+    'ogerpon':    0.03,   # Teal Mask Ogerpon ex
+    'unknown':    0.06,   # Fallback for unseen archetypes
 }
 
 # Reuse cabt_eval's consensus-deck machinery (deterministic, pinned decks).

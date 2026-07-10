@@ -148,10 +148,12 @@ for _c in all_card:
 # is handled automatically: it drops the count back below the need, so we just refill.
 ATTACK_COST = {}                 # attackId -> number of energies in its cost
 ATTACK_COST_ENERGIES = {}        # attackId -> list of required EnergyType (0=Colorless, 5=Psychic…)
+ATTACK_DAMAGE = {}               # attackId -> base damage (int)
 SELF_SCALING_ATTACKS = set()     # attacks whose damage grows with energy on the attacker
 for _a in all_attack():
     ATTACK_COST[_a.attackId] = len(_a.energies or [])
     ATTACK_COST_ENERGIES[_a.attackId] = list(_a.energies or [])
+    ATTACK_DAMAGE[_a.attackId] = int(getattr(_a, 'damage', 0) or 0)
     _t = (_a.text or '').lower()
     if 'for each' in _t and 'energy attached to this' in _t:
         SELF_SCALING_ATTACKS.add(_a.attackId)
@@ -263,15 +265,30 @@ ARCH_LUCARIO = 'lucario'
 ARCH_ABOMASNOW = 'abomasnow'
 ARCH_DRAGAPULT = 'dragapult'
 ARCH_IONO = 'iono'
-ALL_ARCHETYPES = [ARCH_CRUSTLE, ARCH_LUCARIO, ARCH_ABOMASNOW, ARCH_DRAGAPULT, ARCH_IONO]
+# New archetypes from ladder observation (empirical, not hardcoded meta)
+ARCH_STARMIE = 'starmie'           # Mega Starmie ex
+ARCH_FROSLASS = 'froslass'         # Mega Froslass ex
+ARCH_GARCHOMP = 'garchomp'          # Cynthia's Garchomp ex
+ARCH_CINDERACE = 'cinderace'       # Cinderace ex + Duraludon/Archaludon
+ARCH_OGERPON = 'ogerpon'           # Teal Mask Ogerpon ex
+ARCH_UNKNOWN = 'unknown'             # Fallback for unseen archetypes
+ALL_ARCHETYPES = [ARCH_CRUSTLE, ARCH_LUCARIO, ARCH_ABOMASNOW, ARCH_DRAGAPULT, ARCH_IONO,
+                  ARCH_STARMIE, ARCH_FROSLASS, ARCH_GARCHOMP, ARCH_CINDERACE, ARCH_OGERPON, ARCH_UNKNOWN]
 
 # Field-share priors (from 6-17 episode analysis, documented in docs/strategy)
+# Note: These are directional priors; the belief tracker updates from actual observations
 FIELD_PRIORS = {
     ARCH_CRUSTLE:   0.50,
     ARCH_LUCARIO:   0.18,
     ARCH_ABOMASNOW: 0.12,
     ARCH_DRAGAPULT: 0.12,
     ARCH_IONO:      0.08,
+    ARCH_STARMIE:   0.02,         # Emerging from ladder
+    ARCH_FROSLASS:  0.02,
+    ARCH_GARCHOMP:  0.02,
+    ARCH_CINDERACE: 0.02,
+    ARCH_OGERPON:   0.02,
+    ARCH_UNKNOWN:   0.08,         # Prior for unseen archetypes
 }
 
 # Archetype-defining Pokémon card IDs (the win-condition Pokémon, not support).
@@ -285,6 +302,13 @@ ARCH_SIGNATURE_POKEMON = {
     ARCH_ABOMASNOW: {721, 722, 723},  # Snover, Abomasnow, Mega Abomasnow ex
     ARCH_DRAGAPULT: {119, 120, 121},  # Dreepy, Drakloak, Dragapult ex
     ARCH_IONO:      {265, 268, 269, 270, 271},  # Tadbulb, Bellibolt variants
+    # New archetypes from ladder observation
+    ARCH_STARMIE:   {1031},         # Mega Starmie ex
+    ARCH_FROSLASS: {861},          # Mega Froslass ex
+    ARCH_GARCHOMP:  {381},          # Cynthia's Garchomp ex
+    ARCH_CINDERACE: {153, 169, 170},  # Cinderace ex, Duraludon, Archaludon
+    ARCH_OGERPON:   {95, 96},       # Teal Mask Ogerpon, Ogerpon ex
+    ARCH_UNKNOWN:   set(),           # No signature Pokémon (fallback)
 }
 
 # Cards that are compatible with an archetype but not unique to it.
@@ -295,6 +319,13 @@ ARCH_COMPATIBLE_POKEMON = {
     ARCH_ABOMASNOW: {1145, 1158, 1205, 1227, 1235},
     ARCH_DRAGAPULT: {140, 184, 235, 1071, 1079, 1080, 1086, 1097, 1120, 1121, 1152, 1156, 1182, 1198, 1210, 1227, 1256},
     ARCH_IONO:      {1086, 1121, 1254, 1097, 1152, 1110, 1118, 4, 1227, 1233},
+    # New archetypes from ladder observation
+    ARCH_STARMIE:   {1030, 1086, 1152, 1156, 1182, 1198, 1210, 1227, 1256},  # Staryu, Fezandipiti, etc.
+    ARCH_FROSLASS: {1030, 1031, 1086, 1152, 1156, 1182, 1198, 1210, 1227, 1256},  # Staryu, Starmie, etc.
+    ARCH_GARCHOMP:  {1102, 1123, 1141, 1142, 1152, 1159, 1182, 1192, 1227, 1252, 6},  # Roserade support, etc.
+    ARCH_CINDERACE: {140, 1086, 1147, 1212, 1224, 1264, 1159, 18, 11, 14, 6},  # Fezandipiti, Poffin, etc.
+    ARCH_OGERPON:   {140, 1086, 1147, 1212, 1224, 1264, 1159, 18, 11, 14, 6},  # Fezandipiti, Poffin, etc.
+    ARCH_UNKNOWN:   set(),  # No compatible cards (fallback)
 }
 
 # Energy types that are diagnostic for an archetype
@@ -304,6 +335,13 @@ ARCH_ENERGY_SIGNATURE = {
     ARCH_ABOMASNOW: {EnergyType.GRASS, EnergyType.WATER},
     ARCH_DRAGAPULT: {EnergyType.FIRE, EnergyType.PSYCHIC},  # Fire + Psychic for Phantom Dive
     ARCH_IONO:      {EnergyType.LIGHTNING},
+    # New archetypes from ladder observation
+    ARCH_STARMIE:   {EnergyType.WATER},
+    ARCH_FROSLASS: {EnergyType.WATER},
+    ARCH_GARCHOMP:  {EnergyType.FIGHTING},
+    ARCH_CINDERACE: {EnergyType.FIRE, EnergyType.METAL},
+    ARCH_OGERPON:   {EnergyType.GRASS},
+    ARCH_UNKNOWN:   set(),  # No energy signature (fallback)
 }
 
 # Attack IDs that are diagnostic for an archetype
@@ -313,6 +351,13 @@ ARCH_ATTACK_SIGNATURE = {
     ARCH_ABOMASNOW: set(),
     ARCH_DRAGAPULT: {1073},  # Phantom Dive (attackId for Dragapult ex's spread attack)
     ARCH_IONO:      set(),
+    # New archetypes from ladder observation
+    ARCH_STARMIE:   set(),
+    ARCH_FROSLASS: set(),
+    ARCH_GARCHOMP:  set(),
+    ARCH_CINDERACE: set(),
+    ARCH_OGERPON:   set(),
+    ARCH_UNKNOWN:   set(),  # No attack signature (fallback)
 }
 
 
@@ -656,6 +701,125 @@ class AlakazamPolicy:
         return any(getattr(e, 'id', None) in EFFECT_PREVENT_ENERGY
                    for e in (getattr(opp, 'energyCards', None) or []))
 
+    # — generalized incoming-lethal detector (Task 2a) —
+    def _opp_attack_damage_to(self, opp_poke, our_active):
+        """Max damage `opp_poke` could deal to `our_active` NEXT turn, using its
+        currently-visible energy + known attack base damage + our_active weakness/
+        resistance. Self-scaling attacks get +1 energy of headroom. Returns 0 if it
+        can't pay any attack or has no attacks."""
+        if opp_poke is None or our_active is None:
+            return 0
+        c = card_table.get(opp_poke.id)
+        if c is None or not (c.attacks or []):
+            return 0
+        attached = list(opp_poke.energies or [])
+        od = card_table.get(our_active.id)
+        best = 0
+        for aid in c.attacks:
+            cost = ATTACK_COST_ENERGIES.get(aid)
+            if cost is None:
+                continue
+            if not self._can_pay(attached, cost):
+                if aid in SELF_SCALING_ATTACKS and self._can_pay(attached + [0], cost):
+                    pass
+                else:
+                    continue
+            base = ATTACK_DAMAGE.get(aid, 0)
+            if aid in SELF_SCALING_ATTACKS:
+                base = max(base, self._scaling_damage(aid, len(attached) + 1))
+            dmg = base
+            if od is not None:
+                if od.weakness is not None and od.weakness == c.energyType:
+                    dmg *= 2
+                elif od.resistance is not None and od.resistance == c.energyType:
+                    dmg = max(0, dmg - 30)
+            best = max(best, dmg)
+        return best
+
+    def _scaling_damage(self, aid, n_energy):
+        base = ATTACK_DAMAGE.get(aid, 0)
+        return base + 30 * max(0, n_energy - 1)
+
+    def _opp_incoming_damage(self):
+        active = self.me.active[0] if self.me.active else None
+        if active is None:
+            return 0
+        best = 0
+        for p in (self.opponent.active + self.opponent.bench):
+            if p is None:
+                continue
+            best = max(best, self._opp_attack_damage_to(p, active))
+        return best
+
+    def _incoming_lethal(self):
+        active = self.me.active[0] if self.me.active else None
+        if active is None:
+            return False
+        return self._opp_incoming_damage() >= active.hp
+
+    def _safe_retreat_target(self):
+        active = self.me.active[0] if self.me.active else None
+        incoming = self._opp_incoming_damage() if active is not None else 0
+        best = None; best_score = -1
+        for p in self.me.bench:
+            if p is None:
+                continue
+            survives = (p.hp > incoming) or (incoming == 0)
+            score = 0
+            if p.id in ALAKAZAM_IDS and self._energy_count(p) >= 1:
+                score += 1000
+            elif p.id in ALAKAZAM_IDS:
+                score += 500
+            score += p.hp // 10
+            if survives:
+                score += 200
+            if score > best_score:
+                best_score = score; best = p
+        return best, (best.hp > incoming if best is not None else False)
+
+    # — Task 2b: bench-spread lethal detector —
+    def _max_bench_spread_damage(self):
+        """Max bench damage the opponent could deal THIS turn from a payable
+        spread attack (one that hits the bench). Returns 0 if none available."""
+        best = 0
+        for p in (self.opponent.active + self.opponent.bench):
+            if p is None:
+                continue
+            c = card_table.get(p.id)
+            if c is None or not (c.attacks or []):
+                continue
+            attached = list(p.energies or [])
+            for aid in c.attacks:
+                if aid not in BENCH_DAMAGE_ATTACKS:
+                    continue
+                cost = ATTACK_COST_ENERGIES.get(aid)
+                if cost is None:
+                    continue
+                if not self._can_pay(attached, cost):
+                    continue
+                dmg = ATTACK_DAMAGE.get(aid, 0)
+                if dmg > best:
+                    best = dmg
+        return best
+
+    def _bench_spread_threat_level(self):
+        """Classify opponent's bench-spread threat against our fragile attackers.
+        'CRITICAL'  — payable spread attack KOs our Alakazam (>=140 bench dmg)
+        'DANGEROUS' — payable spread attack can KO our small bench (>=70 dmg)
+        'SAFE'      — no payable spread attack present
+        """
+        max_spread = self._max_bench_spread_damage()
+        if max_spread == 0:
+            return 'SAFE'
+        if max_spread >= 120:  # lowered from 140; kajitake shows -130 bench damage
+            return 'CRITICAL'
+        if max_spread >= 70:
+            return 'DANGEROUS'
+        return 'SAFE'
+
+    def _bench_has_alakazam(self):
+        return any(p is not None and p.id in ALAKAZAM_IDS for p in self.me.bench)
+
     # — damage —
     def _alakazam_damage(self, attack_id, target):
         if target is None:
@@ -850,6 +1014,24 @@ class AlakazamPolicy:
 
     def _score_play_poke(self, card):
         cid = card.id; n = self.field[cid]
+        # Task 2b: vs a CRITICAL bench-spread attacker (Dragapult Phantom Dive = 200 to
+        # bench), do NOT flood the bench with extra Alakazam-line pieces — every one is a
+        # one-shot prize for the opponent. Cap the line at 2 bodies (1 active + 1 spare)
+        # and keep the rest in hand (where they're +20 Powerful Hand, not a free KO).
+        spread = self._bench_spread_threat_level()
+        if spread == 'CRITICAL':
+            line = (self.field[C.ABRA] + self.field[C.KADABRA]
+                    + self.field[C.ALAKAZAM] + self.field[C.ALAKAZAM_PSY])
+            if cid in (C.ABRA, C.KADABRA, C.ALAKAZAM, C.ALAKAZAM_PSY):
+                if line >= 2:
+                    return 200   # hard cap: don't over-bench the line vs spread
+                return 20000 - 250 * n
+            # Non-line bodies: still fine to bench (they're cheap sac fodder), but keep
+            # the engine modest so we don't present 5 free prizes.
+            if cid == C.DUNSPARCE:
+                if self.field[C.DUNSPARCE] + self.field[C.DUDUNSPARCE] >= 1:
+                    return 1200
+                return 18500 - 250 * n
         if cid == C.ABRA:
             # Majkel (7-05, 7275 MAIN decisions): moderate bench — our #1 over-pick was
             # flooding bodies (PLAY:Dunsparce 548x / Abra 152x). 3 line bodies is plenty.
@@ -1076,10 +1258,33 @@ class AlakazamPolicy:
         opp = self.opponent.active[0] if self.opponent.active else None
         if active is None or opp is None:
             return -1
+        # Task 2b FIRST: CRITICAL bench-spread (Dragapult Phantom Dive = 200 to active
+        # AND 200 to a bench Pokémon). If our active is NOT an Alakazam but our bench HAS
+        # one, retreat to bring the Alakazam active — as the active it only takes the 200
+        # active hit (NOT the bench-spread hit), so it survives the spread that would
+        # otherwise one-shot it on the bench (kajitake replay: 6x KO on bench 743). If our
+        # active IS already an Alakazam, do NOT retreat — it is already protected from
+        # bench spread as the active, and retreating would expose it. This check runs
+        # BEFORE the generic "bring up a ready Alakazam" branch so the higher-priority
+        # spread-escape score wins.
+        if (self._bench_spread_threat_level() == 'CRITICAL'
+                and active.id not in ALAKAZAM_IDS
+                and self._bench_has_alakazam()):
+            return 25000
         if active.id not in ALAKAZAM_IDS:
             for p in self.me.bench:
                 if p is not None and p.id in ALAKAZAM_IDS and self._energy_count(p) >= 1:
                     return 6000
+        if self._incoming_lethal() and not self._lethal_now():
+            # Task 2b guard: if a CRITICAL bench-spread attacker is in play, retreating
+            # our active Alakazam to the bench just exposes it to the bench-spread hit
+            # (kajitake: 6x KO on bench 743). The active slot is the SAFER place vs spread,
+            # so do NOT retreat an Alakazam into the bench when spread is CRITICAL.
+            if self._bench_spread_threat_level() == 'CRITICAL' and active.id in ALAKAZAM_IDS:
+                return -1
+            tgt, safe = self._safe_retreat_target()
+            if tgt is not None:
+                return 22000 if safe else 12000
         return -1
 
     # — attack —

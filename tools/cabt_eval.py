@@ -33,6 +33,13 @@ CONSENSUS = {
     'lucario': [673,673,674,674,675,675,676,676,676,677,677,677,678,678,678,678,1102,1102,1102,1102,
                 1123,1123,1141,1141,1141,1141,1142,1142,1142,1142,1152,1152,1152,1152,1159,1182,1182,
                 1192,1192,1192,1192,1227,1227,1227,1227,1252,1252]+[6]*13,
+    # New archetypes from ladder observation (using existing agent decks)
+    'starmie': [int(_l) for _l in open(ROOT + '/agents/megastarmie/deck.csv') if _l.strip()],
+    'froslass': [int(_l) for _l in open(ROOT + '/agents/froslass/deck.csv') if _l.strip()],
+    'garchomp': [int(_l) for _l in open(ROOT + '/agents/garchomp/deck.csv') if _l.strip()],
+    'ogerpon': [int(_l) for _l in open(ROOT + '/agents/ogerpon/deck.csv') if _l.strip()],
+    'cinderace': [int(_l) for _l in open(ROOT + '/agents/megastarmie/deck.csv') if _l.strip()],  # same as starmie
+    'unknown': [int(_l) for _l in open(ROOT + '/agents/search_agent/deck.csv') if _l.strip()],  # use our deck as fallback
 }
 NB = {
     'crustle': ('beating-the-day-1-1-crustle-bot.ipynb', 4),
@@ -40,6 +47,12 @@ NB = {
     'abomasnow': ('a-sample-rule-based-agent-mega-abomasnow-ex-deck.ipynb', 2),
     'dragapult': ('a-sample-rule-based-agent-dragapult-ex-deck.ipynb', 3),
     'iono': ('a-sample-rule-based-agent-iono-s-deck.ipynb', 2),   # official Iono's Bellibolt sample
+    'starmie': ('beating-the-day-1-1-crustle-bot.ipynb', 4),   # reuse Crustle template
+    'froslass': ('a-sample-rule-based-agent-mega-lucario-ex-deck.ipynb', 2),  # reuse Lucario template
+    'garchomp': ('a-sample-rule-based-agent-mega-lucario-ex-deck.ipynb', 2),  # reuse Lucario template
+    'ogerpon': ('a-sample-rule-based-agent-mega-lucario-ex-deck.ipynb', 2),  # reuse Lucario template
+    'cinderace': ('beating-the-day-1-1-crustle-bot.ipynb', 4),  # reuse Crustle template
+    'unknown': ('a-sample-rule-based-agent-mega-lucario-ex-deck.ipynb', 2),  # reuse Lucario template
 }
 # Iono sample reads deck.csv -> give it the consensus Iono's Bellibolt ex list (our build).
 CONSENSUS['iono'] = [int(_l) for _l in open(ROOT + '/agents/bellibolt/deck.csv') if _l.strip()]
